@@ -1,0 +1,9 @@
+Failure # 1 (occurred at 2026-02-04_16-34-38)
+The actor died unexpectedly before finishing this task.
+	class_name: ImplicitFunc
+	actor_id: 797c6d81a83abc738d16bdbd01000000
+	pid: 15284
+	namespace: 2a272959-4f12-45c1-ad92-080ee0c7fd21
+	ip: 127.0.0.1
+The actor is dead because its owner has died. Owner Id: 01000000ffffffffffffffffffffffffffffffffffffffffffffffff Owner Ip address: 127.0.0.1 Owner worker exit type: SYSTEM_ERROR Worker exit detail: Owner's node has crashed.
+The actor never ran - it was cancelled before it started running.

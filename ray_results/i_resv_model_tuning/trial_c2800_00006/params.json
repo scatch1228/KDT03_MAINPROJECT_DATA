@@ -1,0 +1,10 @@
+{
+  "batch_size": 16,
+  "dropout": 0.48719702926522646,
+  "forecast_size": 60,
+  "lr": 0.009220734018043616,
+  "n_epochs": 5,
+  "units": 32,
+  "weight_decay": 2.7775552168498273e-05,
+  "window_size": 120
+}
