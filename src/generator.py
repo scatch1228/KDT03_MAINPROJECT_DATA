@@ -123,7 +123,7 @@ def format_to_json(prediction, last_input_time):
 
 # 2. THE LOOP
 def run_generator(task_id:int, suzy:int):
-    print("Generator started. Monitoring reservoir flow...")
+    print(f"[task_id : {task_id}] started. Monitoring {suzy}-reservoir flow...")
     while True:
         try:
             # for res_id in configs.keys():
@@ -138,14 +138,14 @@ def run_generator(task_id:int, suzy:int):
             #     redis_client.set(f"{res_id}_prediction", json_pred)
             #     redis_client.set(f"{res_id}_last_updated", json_date)
             
-            input_window, last_input_time= get_latest_window(10, start_date="2024-01-01 00:01")
-            prediction = service.predict(10, input_window)
+            input_window, last_input_time= get_latest_window(suzy, start_date="2024-01-01 00:01")
+            prediction = service.predict(suzy, input_window)
 
             json_pred, json_date = format_to_json(prediction, last_input_time)
             #redis_client.set(f"{configs[suzy]}_prediction", json_pred)
             #redis_client.set(f"{configs[suzy]}_last_updated", json_date)
 
-            print(f"Cycle started at {json_date}")
+            print(f"Prediction from {json_date}")
             print(f"Cycle complete at {time.ctime()}")
             time.sleep(60) # Wait for the next minute
 

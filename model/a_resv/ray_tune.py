@@ -193,6 +193,7 @@ batch_size = best_config["batch_size"]
 lr = best_config["lr"]
 dropout = best_config["dropout"]
 epochs = best_config["n_epochs"]
+wd = best_config["weighted_decay"]
 
 print("Best config:", best_config)
 print("Best val_mae:", best_result.metrics.get("val_mae"))
@@ -227,7 +228,7 @@ model = FlowPredictor(
     input_dim=1, hidden_dim=units, output_dim=forecast_size, dropout=dropout
 ).to(device)
 mae_criterion = nn.L1Loss()
-optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+optimizer = torch.optim.Adam(model.parameters(), lr=lr, weighted_decay=wd)
 
 for epoch in range(epochs):
     model.train()
