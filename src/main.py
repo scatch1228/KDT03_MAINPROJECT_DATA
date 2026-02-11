@@ -1,14 +1,27 @@
 # uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 import asyncio
+import socket
 import json
-from datetime import datetime
-from fastapi import FastAPI, BackgroundTasks
+import sys
+from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
 from generator import run_generator
 
 app = FastAPI()
+
+RESULT_EXPIRE_SECONDS = 600
+
+configs={
+    4:'a',
+    7:'d',
+    8:'e',
+    10:'g',
+    13:'j',
+    15:'l',
+}
+
 origins=[
     "http://10.125.121.178:3000",
     "http://10.125.121.184:8080"
@@ -21,44 +34,116 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-redis_client = Redis(host="10.125.121.184", port=6379, decode_responses=True)
+#Check Redis Connection
+#Check Redis Connection
+#Check Redis Connection
+def is_redis_available(host: str, port: int, timeout: int = 1) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
-configs={
-    4:'a',
-    5:'b',
-    6:'c',
-    7:'d',
-    8:'e',
-    9:'f',
-    10:'g',
-    11:'h',
-    12:'j',
-    13:'k',
-    14:'l',
-}
+#Initialize Redis Client
+#Initialize Redis Client
+#Initialize Redis Client
+redis_client = None
+_redis_host = "10.125.121.184"
+_redis_port = 6379
 
-#배수지 예측
+if is_redis_available(_redis_host, _redis_port):
+    redis_client = Redis(host=_redis_host, port=_redis_port, decode_responses=True)
+else:
+    print(f"[WARNING] Redis 서버에 연결할 수 없습니다: {_redis_host}:{_redis_port}")
+    sys.exit(1)
+
+
+#Saving Logic
+#Saving Logic
+#Saving Logic
+async def _save_result(
+    task_id: str,
+    status: str,
+    prediction_data: str | None = None,
+    predict_time: str | None = None,
+    accuracy: str | None = None,
+    error: str | None = None,
+):
+    if redis_client is None:
+        print(f"[{task_id}] Redis 미연결로 결과 저장 불가 (status={status})")
+        return
+    mapping = {"status": status}
+    if prediction_data is not None:
+        mapping["prediction_data"] = prediction_data
+    if predict_time is not None:
+        mapping["predict_from"] = predict_time
+    if accuracy is not None:
+        mapping["accuracy"] = accuracy
+    if error is not None:
+        mapping["error"] = error
+    key = f"result:{task_id}"
+    await redis_client.hset(key, mapping=mapping)
+    await redis_client.expire(key, RESULT_EXPIRE_SECONDS)
+
+
+#Call Prediction Logic
+#Call Prediction Logic
+#Call Prediction Logic
 async def resv_pred(task_id: str, suzy: int):
-    print(f"[{task_id}] 학습 시작...")
+    print(f"[{task_id}] 학습 시작... ")
     print(f"[배수지: {suzy}]")
 
-    data = run_generator(task_id, suzy)
+    if redis_client is None:
+        print(f"[{task_id}] Redis 미연결로 작업 중단")
+        await _save_result(task_id, "error", error="Redis 서버 연결 불가")
+        return
 
-    # 1. Redis Hash 구조로 저장 (key: result:{task_id})
-    # 배열은 문자열(JSON)로 변환해서 넣어야 합니다.
-    await redis_client.hset(f"result:{task_id}", mapping={
-        "prediction_data": data[0],
-        "predict_time": data[1]
-    })
+    if suzy not in configs.keys():
+        print(f"[{task_id}] unknown Suzy: {suzy}")
+        await _save_result(task_id, "failed", error=f"unknown Suzy: {suzy}")
+        return
 
-    # 2. 만료 시간 설정 (예: 1시간 후 삭제)
-    await redis_client.expire(f"result:{task_id}", 600)
-    print(f"[{task_id}] Hash 데이터 저장 완료!")
+    try:
+        data, time, accuracy = await asyncio.to_thread(run_generator, task_id, suzy)
+        await _save_result(
+            task_id, "completed", prediction_data=data, predict_time=time, accuracy=accuracy
+        )
+        print(f"[{task_id}] Hash 데이터 저장 완료!")
+    except Exception as e:
+        print(f"[{task_id}] 오류: {e}")
+        await _save_result(task_id, "error", error=str(e))
 
+#Predict API
+#Predict API
+#Predict API
 @app.get("/predict/{suzy}/{task_id}")
 async def start_predict(task_id: str, background_tasks: BackgroundTasks, suzy: int):
     background_tasks.add_task(resv_pred, task_id, suzy)
     return {"status" : "started", "task_id" : task_id, "baeSuzy":suzy}
 
-
+#Result View API
+#Result View API
+#Result View API
+@app.get("/result/{task_id}")
+async def get_result(task_id: str):
+    """태스크 결과 조회 (Redis에서 조회)."""
+    if redis_client is None:
+        raise HTTPException(status_code=503, detail="Redis 서버 연결 불가")
+    key = f"result:{task_id}"
+    raw = await redis_client.hgetall(key)
+    if not raw:
+        raise HTTPException(
+            status_code=404, detail=f"task_id '{task_id}' 결과 없음 또는 만료됨"
+        )
+    status = raw.get("status", "unknown")
+    out = {"task_id": task_id, "status": status}
+    if "prediction_data" in raw:
+        out["prediction_data"] = json.loads(raw["prediction_data"])
+    if "predict_time" in raw:
+        out["predict_from"] = raw["predict_from"]
+    if "accuracy" in raw:
+        out["accuracy"] = raw["accuracy"]
+    if "error" in raw:
+        out["error"] = raw["error"]
+    return out
 

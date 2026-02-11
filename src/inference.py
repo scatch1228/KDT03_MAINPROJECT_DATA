@@ -13,7 +13,8 @@ class ReservoirInferenceService:
         
         # reservoir_configs = {'g': {'weights': 'path', 'scaler': 'path'}, 'i': {...}}
         self.models = {}
-        self.scalers = {}
+        self.scalers_x = {}
+        self.scalers_y = {}
 
         for name, paths in reservoir_configs.items():
             # Load Config (JSON)
@@ -21,7 +22,8 @@ class ReservoirInferenceService:
                 config = json.load(f)
 
             # Load Scaler
-            self.scalers[name] = joblib.load(paths['scaler'])
+            self.scalers_x[name] = joblib.load(paths['scaler_x'])
+            self.scalers_y[name] = joblib.load(paths['scaler_y'])
             
             # Load Model
             model = FlowPredictor(
@@ -36,17 +38,19 @@ class ReservoirInferenceService:
     def predict(self, reservoir_name, raw_data):
         # 0. Select the correct tools
         model = self.models[reservoir_name]
-        scaler = self.scalers[reservoir_name]
+        scaler_x = self.scalers_x[reservoir_name]
+        scaler_y = self.scalers_y[reservoir_name]
         
         # 1. Scale
         n_min = self.window_size #input window size
-        filtered_data = savgol_filter(raw_data, window_length=31, polyorder=1)
-        scaled_data = scaler.transform(filtered_data.reshape(-1, 1))
-        input_tensor = torch.FloatTensor(scaled_data).view(1, n_min, 1)
+        raw_data['resv_flow'] = savgol_filter(raw_data['resv_flow'], window_length=31, polyorder=1)
+        scaled_data = scaler_x.transform(raw_data)
+        input_tensor = torch.FloatTensor(scaled_data).view(1, n_min, 4)
         
         # 2. Predict
         with torch.no_grad():
             prediction = model(input_tensor)
             
         # 3. Inverse Scale
-        return scaler.inverse_transform(prediction.numpy())
+        out = scaler_y.inverse_transform(prediction.cpu().numpy())
+        return out

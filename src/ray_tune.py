@@ -21,7 +21,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 tag={
-    'g':53
+    'j':10,
+    'e':28, #
+    'd':33, #
+    'a':40, #
+    'g':53, #
+    'l':70 #
 }
 
 #data slicing
@@ -201,7 +206,10 @@ def tune_and_save(resv):
         tune.with_resources(trainable_with_data, {"gpu": 1}),
         param_space=param_space,
         tune_config=TuneConfig(
-            num_samples=10, metric="val_mae", mode="min", max_concurrent_trials=1,
+            num_samples=5, 
+            metric="val_mae", 
+            mode="min", 
+            max_concurrent_trials=1,
             trial_dirname_creator=shortened_path
         ),
         run_config=RunConfig(
@@ -305,7 +313,7 @@ def tune_and_save(resv):
 
 
     plt.title(f"{interval}-Minute Forecast Reality Check")
-    plt.xlabel("Minutes into Future")
+    plt.xlabel("Minutes into Future")   
     plt.ylabel("Flow out (m^3/hour)")
     plt.legend()
     plt.grid(True)
