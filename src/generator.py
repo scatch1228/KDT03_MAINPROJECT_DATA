@@ -11,6 +11,9 @@ import pandas as pd
 # 1. SETUP
 # Initialize Inference 
 window_size=180
+forecast_size=15
+total_forecast_size=60
+
 configs = {
     4: {"weights": "../model/a_resv_flow_model.pth", 
            "scaler_x": "../model/a_resv_scaler_x.pkl",
@@ -44,7 +47,6 @@ configs = {
            }
 }
 service = ReservoirInferenceService(configs,window_size=window_size)
-#redis_client = Redis(host="10.125.121.184", port=6379, decode_responses=True)
 
 def connect_MySQL():
     try: 
@@ -77,45 +79,23 @@ def get_latest_window(resv: int, start_date):
             JOIN weather w ON r.collected_at = w.collected_at
             WHERE r.facility_id = %s 
             AND r.collected_at >= %s
-            LIMIT 195
+            LIMIT 240
         """
-            #AND r.collected_at < DATE_ADD(%s, INTERVAL 3 HOUR)
-            #ORDER BY r.collected_at ASC 
-        raw_df = pd.read_sql(query, connection, params=(resv, start_date))#, start_date))
-        train_df = raw_df[:-15]
-        val_df = raw_df['resv_flow'][-15:].values
+        raw_df = pd.read_sql(query, connection, params=(resv, start_date))
+        train_df = raw_df[:-15] #길이 225
+        val_df = raw_df['resv_flow'][-60:].values
         columns = ['resv_flow', 'temperature', 'precipitate','humidity']
         return train_df[columns], train_df['collected_at'].values[-1], val_df
     finally:    
         connection.close()
 
+#1시간을 리턴하도록 수정
 def format_to_json(prediction, last_input_time, val_df):
     last_input_time = pd.to_datetime(last_input_time)
-    start_pred_time = last_input_time + timedelta(minutes=1)
     prediction = prediction.flatten()
 
     accuracy = np.mean( (1- np.abs(val_df - prediction) / (val_df+0.01)) )
-    # forecast_time = pd.date_range(
-    #     start=start_pred_time,
-    #     periods=len(prediction),
-    #     freq='1min'
-    #     )
-    
-    # pred_df = pd.DataFrame({
-    #     'time': forecast_time,
-    #     'resv_flow_pred':prediction
-    # })
 
-    # 1. Convert the DataFrame rows to a list of dictionaries
-    #json_data = pred_df.to_json(orient='records', date_format='iso')
-    
-    # 2. Parse that string back to a Python object and wrap it
-    # (This step is necessary if you want the 'predictions' header)
-    # final_dict = {
-    #     "resv_flow_pred": json.loads(prediction)
-    # }
-
-    # 3. Convert the final dictionary to a JSON string for Redis
     json_for_redis = json.dumps(prediction.tolist())
     date_for_redis = str(last_input_time)
     accuracy_for_redis = str(accuracy)
@@ -130,11 +110,11 @@ def run_generator(task_id:int, suzy:int):
     print(f"Cycle started at {time.ctime()}")
     try:  
         input_window, last_input_time, val_df= get_latest_window(suzy, start_date="2024-01-01 00:01")
-        prediction = service.predict(suzy, input_window)
+        prediction = service.predict(suzy, input_window[:180])
+        for i in range(1,total_forecast_size//forecast_size):
+            prediction = np.concatenate(( prediction, service.predict(suzy,input_window[i*forecast_size : window_size + i*forecast_size]) ))
 
         json_pred, json_date, json_accuracy = format_to_json(prediction, last_input_time, val_df)
-        #redis_client.set(f"{configs[suzy]}_prediction", json_pred)
-        #redis_client.set(f"{configs[suzy]}_last_updated", json_date)
 
         print(f"Prediction from {json_date}")
         print(f"Cycle complete at {time.ctime()}")

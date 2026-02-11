@@ -214,7 +214,7 @@ def tune_and_save(resv):
         ),
         run_config=RunConfig(
             storage_path=r"C:\WORKSPACE_MAINPROJECT\DATA_ANALYSIS\ray_results",
-            name="resv_model_tuning"
+            name=f"{resv}_resv_model_tuning"
         )
     )
     results = tuner.fit()
