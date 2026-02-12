@@ -1,10 +1,8 @@
 import time
 import json
 import sys
-from datetime import timedelta
 from inference import ReservoirInferenceService
-from redis import Redis
-import pymysql
+from sqlalchemy import create_engine, text
 import numpy as np
 import pandas as pd
 
@@ -35,11 +33,11 @@ configs = {
           "scaler_y": "../model/g_resv_scaler_y.pkl",
           "config": "../model/g_resv_config.json"
           },
-    # 13: {"weights": "../model/j_resv_flow_model.pth", 
-    #        "scaler_x": "../model/j_resv_scaler_x.pkl",
-    #        "scaler_y": "../model/j_resv_scaler_y.pkl",
-    #        "config": "../model/j_resv_config.json"
-    #        },
+    13: {"weights": "../model/j_resv_flow_model.pth", 
+           "scaler_x": "../model/j_resv_scaler_x.pkl",
+           "scaler_y": "../model/j_resv_scaler_y.pkl",
+           "config": "../model/j_resv_config.json"
+           },
     15: {"weights": "../model/l_resv_flow_model.pth", 
            "scaler_x": "../model/l_resv_scaler_x.pkl",
            "scaler_y": "../model/l_resv_scaler_y.pkl",
@@ -48,48 +46,59 @@ configs = {
 }
 service = ReservoirInferenceService(configs,window_size=window_size)
 
-def connect_MySQL():
-    try: 
-        connect = pymysql.connect(
-        host='10.125.121.184',
-        port=3306,
-        user='musthave',
-        password='tiger',
-        database='pms_db_dev_gs',
-        charset='utf8mb4',
-        )
-        return connect
-    except OSError:
-        print('MySQL connect error')
+def get_mysql_engine():
+    try:
+        user = 'musthave'
+        password = 'tiger'
+        host = '10.125.121.184'
+        port = 3306
+        database = 'pms_db_dev_gs'
+        
+        url = f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}?charset=utf8mb4"
+        
+        engine = create_engine(url)
+        return engine
+    except Exception as e:
+        print(f'MySQL Engine creation error: {e}')
         sys.exit(1)
 
-
 def get_latest_window(resv: int, start_date):
-
-    connection = connect_MySQL()
-    try: 
-        query = """
-            SELECT 
+    engine = get_mysql_engine()
+    
+    query = text("""
+        SELECT 
             r.collected_at, 
             r.flow_out as resv_flow,
             w.temperature,
             w.rainfall as precipitate,
             w.humidity
-            FROM reservoir_minutely r
-            JOIN weather w ON r.collected_at = w.collected_at
-            WHERE r.facility_id = %s 
-            AND r.collected_at >= %s
-            LIMIT 240
-        """
-        raw_df = pd.read_sql(query, connection, params=(resv, start_date))
-        train_df = raw_df[:-15] #길이 225
+        FROM reservoir_minutely r
+        JOIN weather w ON r.collected_at = w.collected_at
+        WHERE r.facility_id = :resv 
+        AND r.collected_at >= :start_date
+        LIMIT 240
+    """)
+    
+    try: 
+        params = {"resv": resv, "start_date": start_date}
+        raw_df = pd.read_sql(query, engine, params=params)
+        
+        if raw_df.empty:
+            return None, None, None
+
+        train_df = raw_df[:-15] # 길이 225
         val_df = raw_df['resv_flow'][-60:].values
         columns = ['resv_flow', 'temperature', 'precipitate','humidity']
+        
         return train_df[columns], train_df['collected_at'].values[-1], val_df
-    finally:    
-        connection.close()
+        
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        return None, None, None
+    finally:
+        engine.dispose()
 
-#1시간을 리턴하도록 수정
+
 def format_to_json(prediction, last_input_time, val_df):
     last_input_time = pd.to_datetime(last_input_time)
     prediction = prediction.flatten()
@@ -104,7 +113,6 @@ def format_to_json(prediction, last_input_time, val_df):
 
     return json_for_redis, date_for_redis, accuracy_for_redis
 
-# 2. THE LOOP
 def run_generator(task_id:int, suzy:int):
     print(f"[task_id : {task_id}] started. Monitoring {suzy}-reservoir flow...")
     print(f"Cycle started at {time.ctime()}")
