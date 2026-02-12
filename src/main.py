@@ -7,11 +7,11 @@ import sys
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
-from generator import run_generator
+from generator import run_generator, run_optimizer
 
 app = FastAPI()
 
-RESULT_EXPIRE_SECONDS = 600
+RESULT_EXPIRE_SECONDS = 3600
 
 configs={
     4:'a',
@@ -64,8 +64,9 @@ else:
 async def _save_result(
     task_id: str,
     status: str,
-    prediction_data: str | None = None,
-    predict_time: str | None = None,
+    task_type: str | None = None,    
+    data: str | None = None,
+    start_from: str | None = None,
     accuracy: str | None = None,
     error: str | None = None,
 ):
@@ -73,12 +74,21 @@ async def _save_result(
         print(f"[{task_id}] Redis 미연결로 결과 저장 불가 (status={status})")
         return
     mapping = {"status": status}
-    if prediction_data is not None:
-        mapping["prediction_data"] = prediction_data
-    if predict_time is not None:
-        mapping["predict_from"] = predict_time
-    if accuracy is not None:
-        mapping["accuracy"] = accuracy
+
+    if task_type == "resv":
+        if data is not None:
+            mapping["prediction_data"] = data
+        if start_from is not None:
+            mapping["predict_from"] = start_from
+        if accuracy is not None:
+            mapping["accuracy"] = accuracy
+
+    elif task_type == "pump":
+        if data is not None:
+            mapping["optimization_data"] = data
+        if start_from is not None:
+            mapping["start_from"] = start_from
+            
     if error is not None:
         mapping["error"] = error
     key = f"result:{task_id}"
@@ -104,14 +114,20 @@ async def resv_pred(task_id: str, suzy: int):
         return
 
     try:
-        data, time, accuracy = await asyncio.to_thread(run_generator, task_id, suzy)
+        data, time, accuracy = await asyncio.to_thread(run_generator, suzy)
         await _save_result(
-            task_id, "completed", prediction_data=data, predict_time=time, accuracy=accuracy
+            task_type='resv',
+            task_id=task_id, 
+            status="completed", 
+            data=data, 
+            start_from=time, 
+            accuracy=accuracy
         )
         print(f"[{task_id}] Hash 데이터 저장 완료!")
     except Exception as e:
         print(f"[{task_id}] 오류: {e}")
         await _save_result(task_id, "error", error=str(e))
+
 
 #Predict API
 #Predict API
@@ -139,7 +155,7 @@ async def get_result(task_id: str):
     out = {"task_id": task_id, "status": status}
     if "prediction_data" in raw:
         out["prediction_data"] = json.loads(raw["prediction_data"])
-    if "predict_time" in raw:
+    if "predict_from" in raw:
         out["predict_from"] = raw["predict_from"]
     if "accuracy" in raw:
         out["accuracy"] = raw["accuracy"]
@@ -147,3 +163,54 @@ async def get_result(task_id: str):
         out["error"] = raw["error"]
     return out
 
+#Pump Optimization API
+#Pump Optimization API
+#Pump Optimization API
+@app.get("/optimize/{task_id}")
+async def start_optimize(task_id: str, background_tasks: BackgroundTasks):
+    background_tasks.add_task(pump_optimizer, task_id)
+    return {"status" : "started", "task_id" : task_id, "type":"pump_optimizer"}
+
+async def pump_optimizer(task_id:str, start_time="2024-01-02 00:01:00"):
+    print(f"[{task_id}] 최적화 시작... ")
+    if redis_client is None:
+        print(f"[{task_id}] Redis 미연결로 작업 중단")
+        await _save_result(task_id, "error", error="Redis 서버 연결 불가")
+        return
+
+    try:
+        data = await asyncio.to_thread(run_optimizer, start_time)
+        await _save_result(
+            task_type='pump',
+            task_id=task_id, 
+            status="completed", 
+            data=data, start_from=start_time
+        )
+        print(f"[{task_id}] Hash 데이터 저장 완료!")
+    except Exception as e:
+        print(f"[{task_id}] 오류: {e}")
+        await _save_result(task_id, "error", error=str(e))
+
+#Result View API
+#Result View API
+#Result View API
+@app.get("/getopt/{task_id}")
+async def get_result(task_id: str):
+    """태스크 결과 조회 (Redis에서 조회)."""
+    if redis_client is None:
+        raise HTTPException(status_code=503, detail="Redis 서버 연결 불가")
+    key = f"result:{task_id}"
+    raw = await redis_client.hgetall(key)
+    if not raw:
+        raise HTTPException(
+            status_code=404, detail=f"task_id '{task_id}' 결과 없음 또는 만료됨"
+        )
+    status = raw.get("status", "unknown")
+    out = {"task_id": task_id, "status": status}
+    if "optimization_data" in raw:
+        out["optimization_data"] = json.loads(raw["optimization_data"])
+    if "start_from" in raw:
+        out["start_from"] = raw["start_from"]
+    if "error" in raw:
+        out["error"] = raw["error"]
+    return out

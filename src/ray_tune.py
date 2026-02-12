@@ -15,7 +15,7 @@ import joblib
 import json
 from flowpredictor import FlowPredictor
 
-ray.init(ignore_reinit_error=True)
+ray.init(address="auto", ignore_reinit_error=True)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
@@ -131,7 +131,7 @@ def tune_and_save(resv):
     df = pd.merge(resv_flow_temp, weather, how='inner', on='time')
     
     # Cyclical temporal features
-    t = df['time']
+    t = pd.to_datetime( df['time'])
 
     # 시간정보 (분 단위 하루 주기, T=1440)
     minute_of_day = t.dt.hour * 60 + t.dt.minute
