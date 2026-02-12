@@ -8,7 +8,7 @@ from scipy.signal import savgol_filter
 #=========Real Service========
 #=========Real Service========
 class ReservoirInferenceService:
-    def __init__(self, reservoir_configs, window_size=180):
+    def __init__(self, reservoir_configs, input_dim, window_size=180):
         self.window_size = window_size
         
         # reservoir_configs = {'g': {'weights': 'path', 'scaler': 'path'}, 'i': {...}}
@@ -27,6 +27,7 @@ class ReservoirInferenceService:
             
             # Load Model
             model = FlowPredictor(
+                input_dim=input_dim,
                 hidden_dim=config['units'],
                 output_dim=config['forecast_size'],
                 dropout=config['dropout']
