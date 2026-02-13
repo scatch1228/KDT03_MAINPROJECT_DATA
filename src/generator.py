@@ -9,7 +9,7 @@ import pandas as pd
 window_size=180
 forecast_size=15
 total_forecast_size=60
-input_dim = 4
+input_dim = 10
 
 configs = {
     4: {"weights": "../model/a_resv_flow_model.pth", 
@@ -43,7 +43,7 @@ configs = {
            "config": "../model/l_resv_config.json"
            }
 }
-resv_service = ReservoirInferenceService(configs,window_size=window_size, input_dim=input_dim)
+resv_service = ReservoirInferenceService(configs, input_dim=input_dim, window_size=window_size)
 
 def get_mysql_engine():
     try:
@@ -85,25 +85,31 @@ def get_latest_window(resv: int, start_date):
         if df.empty:
             return None, None, None
 
-        # t = df['collected_at']
+        if resv == 4:
+            t = df['collected_at']
 
-        # minute_of_day = t.dt.hour * 60 + t.dt.minute
-        # df['time_sin'] = 0.5 * np.sin(2 * np.pi * minute_of_day / 1440) + 0.5
-        # df['time_cos'] = 0.5 * np.cos(2 * np.pi * minute_of_day / 1440) + 0.5
+            minute_of_day = t.dt.hour * 60 + t.dt.minute
+            df['time_sin'] = 0.5 * np.sin(2 * np.pi * minute_of_day / 1440) + 0.5
+            df['time_cos'] = 0.5 * np.cos(2 * np.pi * minute_of_day / 1440) + 0.5
 
-        # dow = t.dt.dayofweek
-        # df['dow_sin'] = 0.5 * np.sin(2 * np.pi * dow / 7) + 0.5
-        # df['dow_cos'] = 0.5 * np.cos(2 * np.pi * dow / 7) + 0.5
+            dow = t.dt.dayofweek
+            df['dow_sin'] = 0.5 * np.sin(2 * np.pi * dow / 7) + 0.5
+            df['dow_cos'] = 0.5 * np.cos(2 * np.pi * dow / 7) + 0.5
 
-        # doy = t.dt.dayofyear
-        # df['season_sin'] = 0.5 * np.sin(2 * np.pi * doy / 365.25) + 0.5
-        # df['season_cos'] = 0.5 * np.cos(2 * np.pi * doy / 365.25) + 0.5
+            doy = t.dt.dayofyear
+            df['season_sin'] = 0.5 * np.sin(2 * np.pi * doy / 365.25) + 0.5
+            df['season_cos'] = 0.5 * np.cos(2 * np.pi * doy / 365.25) + 0.5
 
-        train_df = df[:-15] # 길이 225
-        val_df = df['resv_flow'][-60:].values
-        columns = ['resv_flow', 'temperature', 'precipitate','humidity',
-                   #'time_sin', 'time_cos', 'dow_sin', 'dow_cos', 'season_sin', 'season_cos'
-                   ]
+            train_df = df[:-15] # 길이 225
+            val_df = df['resv_flow'][-60:].values
+            columns = ['resv_flow', 'temperature', 'precipitate','humidity',
+                    'time_sin', 'time_cos', 'dow_sin', 'dow_cos', 'season_sin', 'season_cos'
+                    ]
+        
+        else:
+            train_df = df[:-15] # 길이 225
+            val_df = df['resv_flow'][-60:].values
+            columns = ['resv_flow', 'temperature', 'precipitate','humidity',]
         
         return train_df[columns], train_df['collected_at'].values[-1], val_df
         

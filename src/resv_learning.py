@@ -17,8 +17,12 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 tag={
-    'g':53,
-    
+    'j':10, #
+    'e':28, #
+    'd':33, #
+    'a':40, ##
+    'g':53, #
+    'l':70 #
 }
 
 #data slicing
@@ -34,14 +38,15 @@ forecast_size=15
 lead_time=10 #forecast_size 보다 커지면 윈도우 사이에 갭이 생기므로 주의
 
 #LSTM config
+input_dim = 10
 units = 128
 
 #learning config
 epochs=20
-batch_size=32
-lr=0.00024960305387285587 # < 0.08
-dropout=0.22148584585583656
-wd=9.997993041619438e-05
+batch_size=128
+lr=0.000251950071777202157 # < 0.08
+dropout=0.15663108499078301
+wd=5.109448411514162e-05
 
 def tune_and_save(resv):
 
@@ -79,6 +84,23 @@ def tune_and_save(resv):
     #======Merge Data=====
     df = pd.merge(resv_flow_temp, weather, how='inner', on='time')
 
+    # Cyclical temporal features
+    t = pd.to_datetime( df['time'])
+
+    # 시간정보 (분 단위 하루 주기, T=1440)
+    minute_of_day = t.dt.hour * 60 + t.dt.minute
+    df['time_sin'] = 0.5 * np.sin(2 * np.pi * minute_of_day / 1440) + 0.5
+    df['time_cos'] = 0.5 * np.cos(2 * np.pi * minute_of_day / 1440) + 0.5
+
+    # 요일 (주간 주기, T=7)
+    dow = t.dt.dayofweek
+    df['dow_sin'] = 0.5 * np.sin(2 * np.pi * dow / 7) + 0.5
+    df['dow_cos'] = 0.5 * np.cos(2 * np.pi * dow / 7) + 0.5
+
+    # 계절 (연간 주기, T=365.25)
+    doy = t.dt.dayofyear
+    df['season_sin'] = 0.5 * np.sin(2 * np.pi * doy / 365.25) + 0.5
+    df['season_cos'] = 0.5 * np.cos(2 * np.pi * doy / 365.25) + 0.5
 
     #=====Train/Test Split=====
     #=====Train/Test Split=====
@@ -91,7 +113,9 @@ def tune_and_save(resv):
     #=====Normalization=====
     #=====Normalization=====
     #=====Normalization=====
-    feature_cols = ['resv_flow', 'temperature', 'precipitate', 'humidity']
+    feature_cols = ['resv_flow', 'temperature', 'precipitate', 'humidity',
+                    'time_sin', 'time_cos', 'dow_sin', 'dow_cos', 'season_sin', 'season_cos'
+                    ]
     target_cols = ['resv_flow'] 
 
     scaler_x = MinMaxScaler(feature_range=(0,1))
@@ -138,7 +162,7 @@ def tune_and_save(resv):
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     model = FlowPredictor(
-        input_dim=4, hidden_dim=units, output_dim=forecast_size, dropout=dropout
+        input_dim=input_dim, hidden_dim=units, output_dim=forecast_size, dropout=dropout
     ).to(device)
     mae_criterion = nn.L1Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay = wd)

@@ -5,6 +5,7 @@ import torch.nn as nn
 #==========Model Class===========
 class FlowPredictor(nn.Module):
     def __init__(self, hidden_dim, output_dim, dropout, input_dim=4):
+        self.input_dim = input_dim
         super(FlowPredictor, self).__init__()
         #Layer1
         self.lstm1 = nn.LSTM(input_dim, hidden_dim, batch_first=True)
