@@ -72,7 +72,6 @@ class PumpOptimizationService:
     def __init__(self):
         self.PUMP_PERFORMANCE = {1: 425.8, 2: 715.3, 3: 902.5}
         self.PUMP_POWER_KW = 150
-        pass
 
     def optimize(self, df, info_df):
         results = []

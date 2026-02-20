@@ -4,12 +4,56 @@ import asyncio
 import socket
 import json
 import sys
+from typing import Dict, List, Any, Optional
+from pydantic import BaseModel, Field
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
 from generator import run_generator, run_optimizer
 
-app = FastAPI()
+# --- Pydantic Models for Documentation ---
+class PredictResponse(BaseModel):
+    status: str = Field(..., description="작업 상태 (started)", example="started")
+    task_id: int = Field(..., description="고유 작업 ID", example="8")
+    baeSuzy: int = Field(..., description="배수지 번호", example="8")
+
+class PredictionResult(BaseModel):
+    task_id: int
+    status: str = Field(..., description="작업 상태 (completed/failed/error)", example="completed")
+    prediction_data: Optional[List[Dict[str, Any]]] = Field(None, description="예측된 수요 데이터 리스트",
+                                                            example="[23.1, 22.1, 20.1, ...]")
+    predict_from: Optional[str] = Field(None, description="예측 시작 시각", 
+                                        example="2024-01-01 00:15")
+    accuracy: Optional[float] = Field(None, description="모델 예측 정확도 (0~1)",
+                                      example="0.82")
+    error: Optional[str] = Field(None, description="에러 발생 시 메시지", example="")
+
+class OptimizeResponse(BaseModel):
+    status: str = Field(..., example="started")
+    task_id: int
+    type: str = "pump_optimizer"
+
+class OptimizationResult(BaseModel):
+    task_id: int
+    status: str = Field(..., description="작업 상태 (completed/error)", example="completed")
+    optimization_data: Optional[List[Dict[str, Any]]] = Field(None, description="최적화된 펌프가동 데이터 리스트",
+                                                              #example=""
+                                                              )
+    start_from: Optional[str] = Field(None, description="최적화 시작 시각",
+                                      example="2024-01-01 00:00")
+    error: Optional[str] = Field(None, description="에러 발생 시 메시지", example="")
+
+# --- App Initialization ---
+app = FastAPI(
+    title="KDT2-3 메인 프로젝트 데이터 API",
+    description = """
+    ## 배수지 수요예측 및 펌프 최적화 시스템
+    이 API는 두 가지 주요 기능을 제공합니다:
+    1. **배수지 수요예측**: 특정 배수지의 향후 1시간 수요를 15분 단위로 예측합니다.
+    2. **펌프 최적화**: 예측된 수요를 바탕으로 24시간 펌프 운영 스케줄을 최적화합니다.
+    """,
+    version = "0.1"
+)
 
 RESULT_EXPIRE_SECONDS = 3600
 
@@ -128,21 +172,64 @@ async def resv_pred(task_id: str, suzy: int):
         print(f"[{task_id}] 오류: {e}")
         await _save_result(task_id, "error", error=str(e))
 
+#Call Optimization Logic
+#Call Optimization Logic
+#Call Optimization Logic
+async def pump_optimizer(task_id:str, start_time="2024-01-02 00:01:00"):
+    print(f"[{task_id}] 최적화 시작... ")
+    if redis_client is None:
+        print(f"[{task_id}] Redis 미연결로 작업 중단")
+        await _save_result(task_id, "error", error="Redis 서버 연결 불가")
+        return
+
+    try:
+        data = await asyncio.to_thread(run_optimizer, start_time)
+        await _save_result(
+            task_type='pump',
+            task_id=task_id, 
+            status="completed", 
+            data=data, 
+            start_from=start_time
+        )
+        print(f"[{task_id}] Hash 데이터 저장 완료!")
+    except Exception as e:
+        print(f"[{task_id}] 오류: {e}")
+        await _save_result(task_id, "error", error=str(e))
+
+
+#================END POINTS===============
+#================END POINTS===============
+#================END POINTS===============
 
 #Predict API
 #Predict API
 #Predict API
-@app.get("/predict/{suzy}/{task_id}")
-async def start_predict(task_id: str, background_tasks: BackgroundTasks, suzy: int):
+@app.get("/predict/{suzy}/{task_id}", 
+         tags=["배수지"],
+         summary="배수지 수요예측 시작",
+         response_model=PredictResponse
+         )
+async def start_predict(task_id: int, background_tasks: BackgroundTasks, suzy: int):
+    """
+    요청된 시각의 **15분 시간대 기준**으로 배수지 수요예측을 시작합니다. 
+    1시간 예측값이 Redis DB에 전달됩니다. 
+    예측값은 Redis에 10분 동안 저장됩니다. 
+    """
     background_tasks.add_task(resv_pred, task_id, suzy)
     return {"status" : "started", "task_id" : task_id, "baeSuzy":suzy}
 
 #Result View API
 #Result View API
 #Result View API
-@app.get("/result/{task_id}")
-async def get_result(task_id: str):
-    """태스크 결과 조회 (Redis에서 조회)."""
+@app.get("/predict/result/{task_id}", 
+         tags=["배수지"],
+         summary="수요예측 결과 조회",
+        response_model=PredictionResult
+         )
+async def get_result(task_id: int):
+    """
+    Redis에 저장된 배수지 수요예측 결과 조회.
+    """
     if redis_client is None:
         raise HTTPException(status_code=503, detail="Redis 서버 연결 불가")
     key = f"result:{task_id}"
@@ -166,37 +253,32 @@ async def get_result(task_id: str):
 #Pump Optimization API
 #Pump Optimization API
 #Pump Optimization API
-@app.get("/optimize/{task_id}")
-async def start_optimize(task_id: str, background_tasks: BackgroundTasks):
+@app.get("/optimize/{task_id}", 
+        tags=["정수장"],
+        summary="펌프 운영 최적화 시작",
+        response_model=OptimizeResponse 
+        )
+async def start_optimize(task_id: int, background_tasks: BackgroundTasks):
+    """
+    24시간 펌프 스케줄링 최적화 알고리즘을 실행합니다.
+    배수지별 예상 수위 변화량을 함께 계산합니다. 
+    """
+
     background_tasks.add_task(pump_optimizer, task_id)
     return {"status" : "started", "task_id" : task_id, "type":"pump_optimizer"}
 
-async def pump_optimizer(task_id:str, start_time="2024-01-02 00:01:00"):
-    print(f"[{task_id}] 최적화 시작... ")
-    if redis_client is None:
-        print(f"[{task_id}] Redis 미연결로 작업 중단")
-        await _save_result(task_id, "error", error="Redis 서버 연결 불가")
-        return
-
-    try:
-        data = await asyncio.to_thread(run_optimizer, start_time)
-        await _save_result(
-            task_type='pump',
-            task_id=task_id, 
-            status="completed", 
-            data=data, start_from=start_time
+#Result View API
+#Result View API
+#Result View API
+@app.get("/optimize/result/{task_id}", 
+        tags=["정수장"],
+        summary="펌프 운영 최적화 결과 조회",
+        response_model=OptimizationResult
         )
-        print(f"[{task_id}] Hash 데이터 저장 완료!")
-    except Exception as e:
-        print(f"[{task_id}] 오류: {e}")
-        await _save_result(task_id, "error", error=str(e))
-
-#Result View API
-#Result View API
-#Result View API
-@app.get("/getopt/{task_id}")
-async def get_result(task_id: str):
-    """태스크 결과 조회 (Redis에서 조회)."""
+async def get_result(task_id: int):
+    """
+    Redis에 저장된 펌프가동 최적화 결과 조회.
+    """
     if redis_client is None:
         raise HTTPException(status_code=503, detail="Redis 서버 연결 불가")
     key = f"result:{task_id}"
