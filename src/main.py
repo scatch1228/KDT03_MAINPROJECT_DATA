@@ -143,7 +143,7 @@ async def _save_result(
 #Call Prediction Logic
 #Call Prediction Logic
 #Call Prediction Logic
-async def resv_pred(task_id: str, suzy: int):
+async def resv_pred(task_id: str, suzy: int, start_date: str):
     print(f"[{task_id}] 학습 시작... ")
     print(f"[배수지: {suzy}]")
 
@@ -158,7 +158,7 @@ async def resv_pred(task_id: str, suzy: int):
         return
 
     try:
-        data, time, accuracy = await asyncio.to_thread(run_generator, suzy)
+        data, time, accuracy = await asyncio.to_thread(run_generator, suzy, start_date)
         await _save_result(
             task_type='resv',
             task_id=task_id, 
@@ -209,13 +209,15 @@ async def pump_optimizer(task_id:str, start_time="2024-01-02 00:01:00"):
          summary="배수지 수요예측 시작",
          response_model=PredictResponse
          )
-async def start_predict(task_id: int, background_tasks: BackgroundTasks, suzy: int):
+async def start_predict(task_id: int, background_tasks: BackgroundTasks, suzy: int, 
+                        start_date:str = "2024-01-01 00:01"
+                        ):
     """
     요청된 시각의 **15분 시간대 기준**으로 배수지 수요예측을 시작합니다. 
     1시간 예측값이 Redis DB에 전달됩니다. 
     예측값은 Redis에 10분 동안 저장됩니다. 
     """
-    background_tasks.add_task(resv_pred, task_id, suzy)
+    background_tasks.add_task(resv_pred, task_id, suzy, start_date)
     return {"status" : "started", "task_id" : task_id, "baeSuzy":suzy}
 
 #Result View API

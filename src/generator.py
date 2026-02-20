@@ -134,11 +134,11 @@ def format_to_json(prediction, last_input_time, val_df):
 
     return json_for_redis, date_for_redis, accuracy_for_redis
 
-def run_generator(suzy:int):
+def run_generator(suzy:int, start_date):
     print(f"Monitoring {suzy}-reservoir flow...")
     print(f"Cycle started at {time.ctime()}")
     try:  
-        input_window, last_input_time, val_df= get_latest_window(suzy, start_date="2024-01-01 00:01")
+        input_window, last_input_time, val_df= get_latest_window(suzy, start_date)
         prediction = resv_service.predict(suzy, input_window[:180])
         for i in range(1,total_forecast_size//forecast_size):
             prediction = np.concatenate(( prediction, resv_service.predict(suzy,input_window[i*forecast_size : window_size + i*forecast_size]) ))
