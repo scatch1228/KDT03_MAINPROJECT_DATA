@@ -1,5 +1,6 @@
 doc/
 data/
+ray_results/
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,windows,linux,macos

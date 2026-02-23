@@ -330,35 +330,35 @@ def tune_and_save(resv):
     #=====Data Plot=====
     #=====Data Plot=====
     #=====Data Plot=====
-    sample_idx0 = 1440 * 0
-    interval = 60*10 #Max = total interval (minute) * 0.2
-    sample_idx1 = sample_idx0 + interval
+    # sample_idx0 = 1440 * 0
+    # interval = 60*10 #Max = total interval (minute) * 0.2
+    # sample_idx1 = sample_idx0 + interval
 
-    y_test_flattened = y_test_original[:,0].flatten()
-    y_test_plot = y_test_flattened[sample_idx0 : sample_idx1]
+    # y_test_flattened = y_test_original[:,0].flatten()
+    # y_test_plot = y_test_flattened[sample_idx0 : sample_idx1]
 
-    y_pred_flattened = y_pred_original[:,0].flatten()
-    y_pred_plot = y_pred_flattened[sample_idx0 : sample_idx1]
+    # y_pred_flattened = y_pred_original[:,0].flatten()
+    # y_pred_plot = y_pred_flattened[sample_idx0 : sample_idx1]
 
-    #Windows
-    y_pred2_plot = y_pred_original[0]
-    for i in range(interval//forecast_size):
-        y_pred2_plot = np.concatenate((y_pred2_plot,y_pred_original[i*forecast_size]))
+    # #Windows
+    # y_pred2_plot = y_pred_original[0]
+    # for i in range(interval//forecast_size):
+    #     y_pred2_plot = np.concatenate((y_pred2_plot,y_pred_original[i*forecast_size]))
 
-    plt.figure(figsize=(10, 5))
+    # plt.figure(figsize=(10, 5))
 
-    plt.plot(range(len(y_test_plot)), y_test_plot, label='Actual Flow')#, marker='o')
-    plt.plot(range(len(y_pred_plot)), y_pred_plot, label='Predicted Flow')#, marker='x')
-    plt.plot(range(len(y_pred2_plot)), y_pred2_plot, label=f'{forecast_size}-min Pred Flow', color='green')
+    # plt.plot(range(len(y_test_plot)), y_test_plot, label='Actual Flow')#, marker='o')
+    # plt.plot(range(len(y_pred_plot)), y_pred_plot, label='Predicted Flow')#, marker='x')
+    # plt.plot(range(len(y_pred2_plot)), y_pred2_plot, label=f'{forecast_size}-min Pred Flow', color='green')
 
 
-    plt.title(f"{interval}-Minute Forecast Reality Check")
-    plt.xlabel("Minutes into Future")   
-    plt.ylabel("Flow out (m^3/hour)")
-    plt.legend()
-    plt.grid(True)
-    #plt.ylim(20, 100) 
-    plt.show()
+    # plt.title(f"{interval}-Minute Forecast Reality Check")
+    # plt.xlabel("Minutes into Future")   
+    # plt.ylabel("Flow out (m^3/hour)")
+    # plt.legend()
+    # plt.grid(True)
+    # #plt.ylim(20, 100) 
+    # plt.show()
 
     #============Save Artifacts==============
     #============Save Artifacts==============

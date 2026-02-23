@@ -74,7 +74,7 @@ def get_latest_window(resv: int, start_date):
         FROM reservoir_minutely r
         JOIN weather w ON r.collected_at = w.collected_at
         WHERE r.facility_id = :resv 
-        AND r.collected_at >= :start_date
+        AND r.collected_at >= DATE_SUB(:start_date, INTERVAL 3 HOUR)
         LIMIT 240
     """)
     
@@ -85,6 +85,7 @@ def get_latest_window(resv: int, start_date):
         if df.empty:
             return None, None, None
 
+        #A배수지일 경우
         if resv == 4:
             t = df['collected_at']
 
@@ -105,13 +106,13 @@ def get_latest_window(resv: int, start_date):
             columns = ['resv_flow', 'temperature', 'precipitate','humidity',
                     'time_sin', 'time_cos', 'dow_sin', 'dow_cos', 'season_sin', 'season_cos'
                     ]
-        
+        #아닐경우
         else:
             train_df = df[:-15] # 길이 225
             val_df = df['resv_flow'][-60:].values
             columns = ['resv_flow', 'temperature', 'precipitate','humidity',]
         
-        return train_df[columns], train_df['collected_at'].values[-1], val_df
+        return train_df[columns], start_date, val_df
         
     except Exception as e:
         print(f"Error fetching data: {e}")
@@ -194,7 +195,7 @@ def get_pump_input(start_time):
                 AND t.facility_id = 1
             WHERE r.facility_id IN ({','.join(map(str, valid_ids))})
             AND r.collected_at >= :start_time
-            LIMIT 1440
+            LIMIT 8640
         """
         query = text(query_string)
         params = {"start_time":start_time}

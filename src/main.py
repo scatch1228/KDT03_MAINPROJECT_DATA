@@ -4,6 +4,7 @@ import asyncio
 import socket
 import json
 import sys
+from time import ctime as ctime
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, BackgroundTasks, HTTPException
@@ -14,13 +15,13 @@ from generator import run_generator, run_optimizer
 # --- Pydantic Models for Documentation ---
 class PredictResponse(BaseModel):
     status: str = Field(..., description="작업 상태 (started)", example="started")
-    task_id: int = Field(..., description="고유 작업 ID", example="8")
+    task_id: str = Field(..., description="고유 작업 ID", example="8")
     baeSuzy: int = Field(..., description="배수지 번호", example="8")
 
 class PredictionResult(BaseModel):
-    task_id: int
+    task_id: str
     status: str = Field(..., description="작업 상태 (completed/failed/error)", example="completed")
-    prediction_data: Optional[List[Dict[str, Any]]] = Field(None, description="예측된 수요 데이터 리스트",
+    prediction_data: Optional[List[float]] = Field(None, description="예측된 수요 데이터 리스트",
                                                             example="[23.1, 22.1, 20.1, ...]")
     predict_from: Optional[str] = Field(None, description="예측 시작 시각", 
                                         example="2024-01-01 00:15")
@@ -30,11 +31,11 @@ class PredictionResult(BaseModel):
 
 class OptimizeResponse(BaseModel):
     status: str = Field(..., example="started")
-    task_id: int
+    task_id: str
     type: str = "pump_optimizer"
 
 class OptimizationResult(BaseModel):
-    task_id: int
+    task_id: str
     status: str = Field(..., description="작업 상태 (completed/error)", example="completed")
     optimization_data: Optional[List[Dict[str, Any]]] = Field(None, description="최적화된 펌프가동 데이터 리스트",
                                                               #example=""
@@ -143,9 +144,11 @@ async def _save_result(
 #Call Prediction Logic
 #Call Prediction Logic
 #Call Prediction Logic
-async def resv_pred(task_id: str, suzy: int, start_date: str):
+async def resv_pred(task_id: str, suzy: int, start_date: str = "2024-01-01 00:01"):
     print(f"[{task_id}] 학습 시작... ")
     print(f"[배수지: {suzy}]")
+    # 날짜가 인자로 잘 받아지는지 확인
+    print(f"start_date: {start_date}")
 
     if redis_client is None:
         print(f"[{task_id}] Redis 미연결로 작업 중단")
@@ -167,7 +170,7 @@ async def resv_pred(task_id: str, suzy: int, start_date: str):
             start_from=time, 
             accuracy=accuracy
         )
-        print(f"[{task_id}] Hash 데이터 저장 완료!")
+        print(f"[{task_id}] Hash 데이터 저장 완료! at {ctime()}")
     except Exception as e:
         print(f"[{task_id}] 오류: {e}")
         await _save_result(task_id, "error", error=str(e))
@@ -175,7 +178,7 @@ async def resv_pred(task_id: str, suzy: int, start_date: str):
 #Call Optimization Logic
 #Call Optimization Logic
 #Call Optimization Logic
-async def pump_optimizer(task_id:str, start_time="2024-01-02 00:01:00"):
+async def pump_optimizer(task_id:str, start_time="2024-01-01 00:01"):
     print(f"[{task_id}] 최적화 시작... ")
     if redis_client is None:
         print(f"[{task_id}] Redis 미연결로 작업 중단")
@@ -191,7 +194,7 @@ async def pump_optimizer(task_id:str, start_time="2024-01-02 00:01:00"):
             data=data, 
             start_from=start_time
         )
-        print(f"[{task_id}] Hash 데이터 저장 완료!")
+        print(f"[{task_id}] Hash 데이터 저장 완료! at {ctime()}")
     except Exception as e:
         print(f"[{task_id}] 오류: {e}")
         await _save_result(task_id, "error", error=str(e))
@@ -204,13 +207,13 @@ async def pump_optimizer(task_id:str, start_time="2024-01-02 00:01:00"):
 #Predict API
 #Predict API
 #Predict API
-@app.get("/predict/{suzy}/{task_id}", 
+@app.get("/predict/{suzy}/{task_id}/{start_date}", 
          tags=["배수지"],
          summary="배수지 수요예측 시작",
          response_model=PredictResponse
          )
-async def start_predict(task_id: int, background_tasks: BackgroundTasks, suzy: int, 
-                        start_date:str = "2024-01-01 00:01"
+async def start_predict(task_id: str, background_tasks: BackgroundTasks, suzy: int, 
+                        start_date
                         ):
     """
     요청된 시각의 **15분 시간대 기준**으로 배수지 수요예측을 시작합니다. 
@@ -223,12 +226,12 @@ async def start_predict(task_id: int, background_tasks: BackgroundTasks, suzy: i
 #Result View API
 #Result View API
 #Result View API
-@app.get("/predict/result/{task_id}", 
+@app.get("/result/predict/{task_id}", 
          tags=["배수지"],
          summary="수요예측 결과 조회",
         response_model=PredictionResult
          )
-async def get_result(task_id: int):
+async def get_result(task_id: str):
     """
     Redis에 저장된 배수지 수요예측 결과 조회.
     """
@@ -255,29 +258,29 @@ async def get_result(task_id: int):
 #Pump Optimization API
 #Pump Optimization API
 #Pump Optimization API
-@app.get("/optimize/{task_id}", 
+@app.get("/optimize/{task_id}/{start_time}", 
         tags=["정수장"],
         summary="펌프 운영 최적화 시작",
         response_model=OptimizeResponse 
         )
-async def start_optimize(task_id: int, background_tasks: BackgroundTasks):
+async def start_optimize(task_id: str, start_time: str, background_tasks: BackgroundTasks):
     """
     24시간 펌프 스케줄링 최적화 알고리즘을 실행합니다.
     배수지별 예상 수위 변화량을 함께 계산합니다. 
     """
 
-    background_tasks.add_task(pump_optimizer, task_id)
+    background_tasks.add_task(pump_optimizer, task_id, start_time)
     return {"status" : "started", "task_id" : task_id, "type":"pump_optimizer"}
 
 #Result View API
 #Result View API
 #Result View API
-@app.get("/optimize/result/{task_id}", 
+@app.get("/result/optimize/{task_id}", 
         tags=["정수장"],
         summary="펌프 운영 최적화 결과 조회",
         response_model=OptimizationResult
         )
-async def get_result(task_id: int):
+async def get_result(task_id: str):
     """
     Redis에 저장된 펌프가동 최적화 결과 조회.
     """
