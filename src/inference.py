@@ -84,8 +84,8 @@ class PumpOptimizationService:
         }
 
         current_pumps = 2
-        last_change_time = -90
-        MIN_HOLDING_TIME = 90
+        last_change_time = -60
+        MIN_HOLDING_TIME = 60
 
         for i, ts in enumerate(timestamps):
             ts_pd = pd.Timestamp(ts)
