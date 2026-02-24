@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import json
 from flowpredictor import FlowPredictor
+from flowtransformer import FlowTransformer
 from scipy.signal import savgol_filter
 #=========Resv Service========
 #=========Resv Service========
@@ -27,19 +28,25 @@ class ReservoirInferenceService:
             self.scalers_x[name] = joblib.load(paths['scaler_x'])
             self.scalers_y[name] = joblib.load(paths['scaler_y'])
             
-            #a배수지만 input_dim = 10 
-            if name != 4:
-                input_dim = 4
+            #a,d 배수지만 input_dim = 9 
+            if name == 4 or name == 7:
+                model = FlowTransformer(
+                    input_dim=self.input_dim,
+                    d_model=config['d_model'],
+                    n_head=config['n_head'],
+                    num_layers=config['num_layers'],
+                    output_dim=config['forecast_size'],
+                    dropout=config['dropout']
+                )
             else:
-                input_dim = self.input_dim
+                # Load Model
+                model = FlowPredictor(
+                    input_dim=4,
+                    hidden_dim=config['units'],
+                    output_dim=config['forecast_size'],
+                    dropout=config['dropout']
+                )
 
-            # Load Model
-            model = FlowPredictor(
-                input_dim=input_dim,
-                hidden_dim=config['units'],
-                output_dim=config['forecast_size'],
-                dropout=config['dropout']
-            )
             model.load_state_dict(torch.load(paths['weights'], map_location=torch.device('cpu')))
             model.eval()
             self.models[name] = model

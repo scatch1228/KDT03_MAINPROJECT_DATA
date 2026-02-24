@@ -17,11 +17,10 @@ class PositionalEncoding(nn.Module):
         return x + self.pe[:x.size(0), :]
 
 class FlowTransformer(nn.Module):
-    def __init__(self, input_dim=4, d_model=64, n_head=8, num_layers=3, output_dim=15, dropout=0.1):
+    def __init__(self, input_dim=9, d_model=64, n_head=8, num_layers=3, output_dim=15, dropout=0.1):
         super(FlowTransformer, self).__init__()
-        
+        self.input_dim = input_dim
         self.input_projection = nn.Linear(input_dim, d_model)
-        
         self.pos_encoder = PositionalEncoding(d_model)
         
         encoder_layers = nn.TransformerEncoderLayer(
@@ -31,7 +30,7 @@ class FlowTransformer(nn.Module):
             dropout=dropout,
             batch_first=False 
         )
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=num_layers)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=num_layers, enable_nested_tensor=False)
         
         self.decoder = nn.Linear(d_model, output_dim)
         

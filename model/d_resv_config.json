@@ -1,1 +1,1 @@
-{"units": 64, "forecast_size": 15, "dropout": 0.3295205665843035}
+{"d_model": 128, "n_head": 8, "num_layers": 2, "forecast_size": 15, "dropout": 0.21634738242918164}

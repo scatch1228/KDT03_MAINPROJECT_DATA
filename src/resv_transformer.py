@@ -128,6 +128,23 @@ def tune_and_save(resv):
     y_train_scaled = scaler_y.fit_transform(df_train[target_cols])
     y_test_scaled = scaler_y.transform(df_test[target_cols])
 
+    #Remove this block=======================
+    #Remove this block=======================
+    #Remove this block=======================
+    #Save the Scaler
+    joblib.dump(scaler_x, f'{resv}_resv_scaler_x.pkl')
+    joblib.dump(scaler_y, f'{resv}_resv_scaler_y.pkl')
+
+    print('scaler is saved. end the process? (y/n)')
+    close = input()
+
+    if close=='y':
+        return
+    #Remove this block=======================
+    #Remove this block=======================
+    #Remove this block=======================
+
+
     #=====Create Sliding Window=====
     #=====Create Sliding Window=====
     #=====Create Sliding Window=====

@@ -9,7 +9,7 @@ import pandas as pd
 window_size=180
 forecast_size=15
 total_forecast_size=60
-input_dim = 10
+input_dim = 9
 
 configs = {
     4: {"weights": "../model/a_resv_flow_model.pth", 
@@ -86,7 +86,7 @@ def get_latest_window(resv: int, start_date):
             return None, None, None
 
         #A배수지일 경우
-        if resv == 4:
+        if resv == 4 or resv == 7:
             t = df['collected_at']
 
             minute_of_day = t.dt.hour * 60 + t.dt.minute
@@ -103,7 +103,7 @@ def get_latest_window(resv: int, start_date):
 
             train_df = df[:-15] # 길이 225
             val_df = df['resv_flow'][-60:].values
-            columns = ['resv_flow', 'temperature', 'precipitate','humidity',
+            columns = ['resv_flow', 'temperature', 'humidity',
                     'time_sin', 'time_cos', 'dow_sin', 'dow_cos', 'season_sin', 'season_cos'
                     ]
         #아닐경우
