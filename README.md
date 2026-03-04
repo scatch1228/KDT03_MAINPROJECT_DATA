@@ -95,7 +95,7 @@ This model consists of two distinct LSTM networks that communicate via a shared 
 * **Hidden Dimension:** 128
 * **Attention Type:** Additive (Bahdanau)
 * **Embedding Dimension:** 16
-* **Forecast
+* **Forecast Horizon:** 15 Steps (Recursive)
 
 =================================================
 
