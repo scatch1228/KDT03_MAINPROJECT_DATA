@@ -6,7 +6,7 @@ The **FlowPredictor** is the baseline model for the reservoir project. It utiliz
 ## Architecture Overview
 The model follows a "tapered" design where each subsequent layer reduces the feature space, forcing the model to learn the most compressed and salient representations of the flow data.
 
-* **Layer 1 (Input):** A standard LSTM processing `input_dim` (4) into `hidden_dim`.
+* **Layer 1 (Input):** A standard LSTM processing `input_dim` (4: flow, temperature, precipitate, humidity) into `hidden_dim`.
 * **Layer 2 (Compression):** An LSTM that reduces the hidden state by half (`hidden_dim // 2`).
 * **Layer 3 (Bottleneck):** A final LSTM layer that reduces the representation again (`hidden_dim // 4`).
 * **Dropout:** Applied after every layer to prevent overfitting during the training of the 180-minute sequences.
@@ -20,7 +20,7 @@ The model follows a "tapered" design where each subsequent layer reduces the fea
 * **Tapered Design:** The reduction in dimensions (`128 -> 64 -> 32`) acts as a regularizer, preventing the model from simply memorizing the training data.
 
 ## Dimensionality Flow
-1.  **Input:** `[Batch, 180, 4]`
+1.  **Input:** `[Batch, 180, 4]` 
 2.  **LSTM 1:** `[Batch, 180, 128]`
 3.  **LSTM 2:** `[Batch, 180, 64]`
 4.  **LSTM 3:** `[Batch, 180, 32]`
@@ -37,7 +37,7 @@ The **FlowTransformer** leverages the power of Self-Attention to identify non-li
 ## Architecture Overview
 The model is an **Encoder-only Transformer** designed for high-throughput temporal feature extraction.
 
-* **Input Projection:** A linear layer that expands the `input_dim` (9) into the model's internal representation space (`d_model=64`).
+* **Input Projection:** A linear layer that expands the `input_dim` (9: flow, temperature, humidity, time of day*2, day of week*2, day of year*2) into the model's internal representation space (`d_model=64`).
 * **Sinusoidal Positional Encoding:** Since Transformers have no inherent sense of order, this layer injects a "time signature" into the data using fixed sine and cosine functions. 
 
 * **Stacked Transformer Blocks:** 3 layers of Multi-Head Self-Attention (`n_head=8`). Each head focuses on different aspects of the history (e.g., one head might look for rainfall spikes, while another tracks gradual temperature shifts).
@@ -65,7 +65,7 @@ The model is an **Encoder-only Transformer** designed for high-throughput tempor
 ### Recurrent Encoder-Decoder with Dynamic Contextual Search
 
 The **LSTMSeq2SeqAttnModel** is the most advanced architecture in this project. It transitions from "One-Shot" mapping to an **Iterative Generation** strategy, allowing the model to focus on different historical events for each specific minute of the 15-minute forecast.
-This model is still in experiment and not included in the service. The source code for this model is in the notebook directory.
+This model is **still in experiment** and not included in the service. The source code for this model is in the notebook directory.
 
 ## Architecture Overview
 This model consists of two distinct LSTM networks that communicate via a shared "Context" and an Attention mechanism.
