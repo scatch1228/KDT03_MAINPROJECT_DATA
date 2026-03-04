@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
-from generator import run_generator, run_optimizer
+from generator import run_generator, run_optimizer, run_simulator
 
 # --- Pydantic Models for Documentation ---
 class PredictResponse(BaseModel):
@@ -199,6 +199,30 @@ async def pump_optimizer(task_id:str, start_time="2024-01-01 00:01"):
         print(f"[{task_id}] 오류: {e}")
         await _save_result(task_id, "error", error=str(e))
 
+#Call Simulation Logic
+#Call Simulation Logic
+#Call Simulation Logic
+async def pump_simulator(task_id:str, pump:str, start_time="2024-01-01 00:01"):
+    print(f"[{task_id}] 시뮬레이션 시작... ")
+    if redis_client is None:
+        print(f"[{task_id}] Redis 미연결로 작업 중단")
+        await _save_result(task_id, "error", error="Redis 서버 연결 불가")
+        return
+
+    try:
+        data = await asyncio.to_thread(run_simulator, start_time, int(pump))
+        await _save_result(
+            task_type='pump',
+            task_id=task_id, 
+            status="completed", 
+            data=data, 
+            start_from=start_time
+        )
+        print(f"[{task_id}] Hash 데이터 저장 완료! at {ctime()}")
+    except Exception as e:
+        print(f"[{task_id}] 오류: {e}")
+        await _save_result(task_id, "error", error=str(e))
+
 
 #================END POINTS===============
 #================END POINTS===============
@@ -296,6 +320,53 @@ async def get_result(task_id: str):
     out = {"task_id": task_id, "status": status}
     if "optimization_data" in raw:
         out["optimization_data"] = json.loads(raw["optimization_data"])
+    if "start_from" in raw:
+        out["start_from"] = raw["start_from"]
+    if "error" in raw:
+        out["error"] = raw["error"]
+    return out
+
+#Pump Simulation API
+#Pump Simulation API
+#Pump Simulation API
+@app.get("/simulate/{task_id}/{pump}/{start_time}", 
+        tags=["정수장"],
+        summary="펌프 시뮬레이션 시작",
+        response_model=OptimizeResponse 
+        )
+async def start_simulate(task_id: str, start_time: str, pump: str, background_tasks: BackgroundTasks):
+    """
+    24시간 펌프 시뮬레이션을 실행합니다.
+    배수지별 예상 수위 변화량을 함께 계산합니다. 
+    """
+
+    background_tasks.add_task(pump_simulator, task_id, pump, start_time)
+    return {"status" : "started", "task_id" : task_id, "type":"pump_optimizer"}
+
+#Result View API
+#Result View API
+#Result View API
+@app.get("/result/simulate/{task_id}", 
+        tags=["정수장"],
+        summary="펌프 운영 시뮬레이션 결과 조회",
+        response_model=OptimizationResult
+        )
+async def get_result(task_id: str):
+    """
+    Redis에 저장된 펌프가동 시뮬레이션 결과 조회.
+    """
+    if redis_client is None:
+        raise HTTPException(status_code=503, detail="Redis 서버 연결 불가")
+    key = f"result:{task_id}"
+    raw = await redis_client.hgetall(key)
+    if not raw:
+        raise HTTPException(
+            status_code=404, detail=f"task_id '{task_id}' 결과 없음 또는 만료됨"
+        )
+    status = raw.get("status", "unknown")
+    out = {"task_id": task_id, "status": status}
+    if "optimization_data" in raw:
+        out["simulation_data"] = json.loads(raw["optimization_data"])
     if "start_from" in raw:
         out["start_from"] = raw["start_from"]
     if "error" in raw:

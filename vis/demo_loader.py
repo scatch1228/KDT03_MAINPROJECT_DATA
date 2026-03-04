@@ -132,48 +132,59 @@ def _resv_configs_for_inference():
 
 def _demo_input_window(suzy_id, start_time):
     """추론용 225행 입력 DataFrame을 생성(generator 입력 형식과 동일한 형태)"""
-    n_rows = 225
-    rng = np.random.RandomState(int(suzy_id) + 42)
-    base = pd.Timestamp(start_time) - pd.Timedelta(minutes=n_rows)
+    n_rows = 240
+    base = pd.Timestamp(start_time) - pd.Timedelta(minutes=180)
+    current_dir = Path(__file__).resolve().parent
 
-    if suzy_id == 4:
-        # A배수지: 10개 피처
-        t = pd.date_range(start=base, periods=n_rows, freq="min")
-        minute_of_day = t.hour * 60 + t.minute
+    resv_path = current_dir / f"{suzy_id}.csv"
+    weather_path = current_dir / "2401.csv"
+
+    resv = pd.read_csv(resv_path)
+    resv.columns = ['drop','collected_at', 'resv_flow', 'drop2']
+    resv['collected_at'] = pd.to_datetime(resv['collected_at'])
+
+    weather = pd.read_csv(weather_path)
+    weather.columns = ['collected_at','temperature','precipitate','humidity']
+    weather['collected_at'] = pd.to_datetime(weather['collected_at'])
+
+    df_merged = pd.merge(resv, weather, on='collected_at', how='inner').drop(columns=['drop', 'drop2'])
+    df = df_merged[df_merged['collected_at'] >= base].head(n_rows).reset_index(drop=True)
+
+
+    if int(suzy_id) in [4,7]:
+        # A배수지: 9개 피처
+        t = df['collected_at']
+        minute_of_day = t.dt.hour * 60 + t.dt.minute
         time_sin = 0.5 * np.sin(2 * np.pi * minute_of_day / 1440) + 0.5
         time_cos = 0.5 * np.cos(2 * np.pi * minute_of_day / 1440) + 0.5
-        dow_sin = 0.5 * np.sin(2 * np.pi * t.dayofweek / 7) + 0.5
-        dow_cos = 0.5 * np.cos(2 * np.pi * t.dayofweek / 7) + 0.5
-        doy = t.dayofyear
+
+        dow = t.dt.dayofweek
+        dow_sin = 0.5 * np.sin(2 * np.pi * dow / 7) + 0.5
+        dow_cos = 0.5 * np.cos(2 * np.pi * dow / 7) + 0.5
+
+        doy = t.dt.dayofyear
         season_sin = 0.5 * np.sin(2 * np.pi * doy / 365.25) + 0.5
         season_cos = 0.5 * np.cos(2 * np.pi * doy / 365.25) + 0.5
-        return pd.DataFrame(
-            {
-                "resv_flow": (
-                    22 + 2 * np.sin(np.arange(n_rows) / 30) + rng.randn(n_rows) * 0.5
-                ).clip(15, 35),
-                "temperature": 15 + rng.randn(n_rows) * 2,
-                "precipitate": rng.uniform(0, 2, n_rows),
-                "humidity": 60 + rng.randn(n_rows) * 10,
-                "time_sin": time_sin,
-                "time_cos": time_cos,
-                "dow_sin": dow_sin,
-                "dow_cos": dow_cos,
-                "season_sin": season_sin,
-                "season_cos": season_cos,
-            }
-        )
+
+        df['time_sin']=time_sin
+        df['time_cos']=time_cos
+        df['dow_sin']=dow_sin
+        df['dow_cos']=dow_cos
+        df['season_sin']=season_sin
+        df['season_cos']=season_cos
+        
+        train_df = df[:-15] # 길이 225
+        val_df = df['resv_flow'][-60:].values
+        columns = ['resv_flow', 'temperature', 'humidity',
+                'time_sin', 'time_cos', 'dow_sin', 
+                'dow_cos', 'season_sin', 'season_cos'
+                ]
     else:
-        return pd.DataFrame(
-            {
-                "resv_flow": (
-                    22 + 2 * np.sin(np.arange(n_rows) / 30) + rng.randn(n_rows) * 0.5
-                ).clip(15, 35),
-                "temperature": 15 + rng.randn(n_rows) * 2,
-                "precipitate": rng.uniform(0, 2, n_rows),
-                "humidity": 60 + rng.randn(n_rows) * 10,
-            }
-        )
+        train_df = df[:-15] # 길이 225
+        val_df = df['resv_flow'][-60:].values
+        columns = ['resv_flow', 'temperature', 'precipitate','humidity',]
+    
+    return train_df[columns], val_df
 
 
 def _predict_with_model_only(suzy_id, start_time):
@@ -181,14 +192,14 @@ def _predict_with_model_only(suzy_id, start_time):
     window_size = 180
     forecast_size = 15
     total_forecast_size = 60
-    input_dim = 10
+    input_dim = 9
 
     configs = _resv_configs_for_inference()
 
     service = ReservoirInferenceService(
         configs, input_dim=input_dim, window_size=window_size
     )
-    input_window = _demo_input_window(suzy_id, start_time)
+    input_window, val_df = _demo_input_window(suzy_id, start_time)
 
     prediction = service.predict(suzy_id, input_window[:window_size].copy())
     for i in range(1, total_forecast_size // forecast_size):
@@ -198,12 +209,13 @@ def _predict_with_model_only(suzy_id, start_time):
         prediction = np.concatenate((prediction, pred_next))
 
     prediction = prediction.flatten()
-    # 정확도는 임의값으로 수정
-    accuracy = 0.88
+
+    accuracy = np.mean( (1- np.abs(val_df - prediction) / (val_df+0.01)) )
     json_pred = json.dumps(prediction.tolist())
+    json_val = json.dumps(val_df.tolist())
     json_date = str(pd.Timestamp(start_time))
     json_acc = str(accuracy)
-    return json_pred, json_date, json_acc
+    return json_pred, json_val, json_date, json_acc
 
 
 def try_run_real_inference(suzy_id, start_time):
@@ -211,7 +223,7 @@ def try_run_real_inference(suzy_id, start_time):
     orig_cwd = os.getcwd()
     os.chdir(SRC_PATH)
     try:
-        json_pred, json_date, json_acc = _predict_with_model_only(suzy_id, start_time)
+        json_pred, json_val, json_date, json_acc = _predict_with_model_only(suzy_id, start_time)
     finally:
         os.chdir(orig_cwd)
 
@@ -219,6 +231,7 @@ def try_run_real_inference(suzy_id, start_time):
         "task_id": "demo-real",
         "status": "completed",
         "prediction_data": json.loads(json_pred),
+        "actual_data": json.loads(json_val),
         "predict_from": json_date,
         "accuracy": json_acc,
     }

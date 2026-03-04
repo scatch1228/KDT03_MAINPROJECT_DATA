@@ -241,3 +241,15 @@ def run_optimizer(start_time:str):
     
     except Exception as e:
         print(f"Error: {e}")
+
+def run_simulator(start_time:str, active_pumps:int):
+    print(f"Simulating pump config...")
+    print(f"Cycle started at {time.ctime()}")
+    try:
+        df_all, resv_info = get_pump_input(start_time)
+        simulation = pump_service.simulate(df_all, resv_info, active_pumps)
+        json_result = simulation.to_json(orient='records', date_format='iso')
+        return json_result
+    
+    except Exception as e:
+        print(f"Error: {e}")

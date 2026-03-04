@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import platform
 from demo_loader import (
     get_reservoir_names_from_project,
     get_sample_optimization_from_project,
@@ -14,14 +15,17 @@ from demo_loader import (
     try_run_real_optimization,
 )
 
-# matplotlib 한글 출력 설정
-plt.rcParams["font.family"] = [
-    "AppleGothic",
-    "Apple SD Gothic Neo",
-    "Malgun Gothic",
-    "NanumGothic",
-    "sans-serif",
-]
+# OS에 따른 기본 한글 폰트 설정
+system_os = platform.system()
+
+if system_os == "Windows":
+    font_name = "Malgun Gothic"
+elif system_os == "Darwin": # macOS
+    font_name = "AppleGothic"
+else: # Linux/Docker (e.g., Nanum installed)
+    font_name = "NanumGothic"
+
+plt.rcParams["font.family"] = font_name
 plt.rcParams["axes.unicode_minus"] = False
 
 
@@ -38,7 +42,8 @@ def make_kpi_card(title, value, icon=""):
 def plot_prediction(data):
     """수요예측 데이터를 시각화 차트와 KPI 카드로 변환합니다."""
     pred_arr = np.array(data["prediction_data"], dtype=float)
-    x_labels = [f"+{i*15}분" for i in range(len(pred_arr))]
+    actual_arr = np.array(data["actual_data"], dtype=float)
+    x_labels = [f"+{i}분" for i in range(len(pred_arr))]
     x_pos = np.arange(len(x_labels))
 
     fig, ax = plt.subplots(figsize=(10, 4.5))
@@ -51,6 +56,15 @@ def plot_prediction(data):
         markersize=6,
         ax=ax,
         label="예측 수요",
+    )
+    sns.lineplot(
+        x=x_pos,
+        y=actual_arr,
+        linewidth=2.5,
+        marker="o",
+        markersize=6,
+        ax=ax,
+        label="실제 수요",
     )
     ax.set_xticks(x_pos)
     ax.set_xticklabels(x_labels)
@@ -165,7 +179,7 @@ def build_ui():
                             label="배수지 선택",
                         )
                         time_input = gr.Textbox(
-                            value="2024-01-15 14:00:00", label="기준 시간"
+                            value="2024-01-03 11:00:00", label="기준 시간"
                         )
                         with gr.Row():
                             btn_sample = gr.Button("샘플 생성")
@@ -179,18 +193,20 @@ def build_ui():
                     load_sample_predict,
                     [resv_dropdown, time_input],
                     [json_out, plot_out, k1, k2, k3],
+                    show_progress=True
                 )
                 btn_real.click(
                     load_real_predict,
                     [resv_dropdown, time_input],
                     [json_out, plot_out, k1, k2, k3],
+                    show_progress=True
                 )
 
             with gr.TabItem("⚡ 펌프 최적화"):
                 with gr.Row():
                     with gr.Column(scale=1):
                         opt_time = gr.Textbox(
-                            value="2024-01-15 14:00:00", label="기준 시간"
+                            value="2024-01-03 11:00:00", label="기준 시간"
                         )
                         with gr.Row():
                             btn_opt_sample = gr.Button("샘플 로드")
@@ -204,9 +220,11 @@ def build_ui():
                     load_sample_optimize,
                     [opt_time],
                     [json_opt, plot_opt, ok1, ok2, ok3],
+                    show_progress=True
                 )
                 btn_opt_real.click(
-                    load_real_optimize, [opt_time], [json_opt, plot_opt, ok1, ok2, ok3]
+                    load_real_optimize, [opt_time], [json_opt, plot_opt, ok1, ok2, ok3],
+                    show_progress=True
                 )
     return demo
 

@@ -201,6 +201,87 @@ class PumpOptimizationService:
             })
 
         return pd.DataFrame(results)
+    
+    def simulate(self, df, info_df, active_pumps: int):
+        """
+        Simulates reservoir levels, costs, and spills based on a fixed number of pumps.
+        """
+        results = []
+        timestamps = sorted(df['timestamp'].unique())
+
+        # Initialize current levels from the first row of each facility
+        current_levels = {
+            rid: df[df['facility_id'] == rid]['level'].iloc[0]
+            for rid in info_df['facility_id']
+        }
+
+        # Validate pump input
+        if active_pumps not in self.PUMP_PERFORMANCE and active_pumps != 0:
+            raise ValueError("active_pumps must be 0, 1, 2, or 3")
+
+        for ts in timestamps:
+            ts_pd = pd.Timestamp(ts)
+            _, price = self.get_load_type(ts_pd)
+            curr_rows = df[df['timestamp'] == ts]
+
+            # 1. Calculate Inflow Capacity
+            # If 0 pumps, performance is 0
+            theoretical_flow_total = self.PUMP_PERFORMANCE.get(active_pumps, 0)
+            theoretical_inflow_min = theoretical_flow_total / 60
+
+            # 2. Identify reservoirs that can still accept water (below safety_max)
+            active_resvs = []
+            for rid in current_levels:
+                max_lvl = info_df.loc[info_df['facility_id'] == rid, 'safety_max'].values[0]
+                if current_levels[rid] < max_lvl:
+                    active_resvs.append(rid)
+
+            # 3. Calculate Spill (Water that can't enter because tanks are full)
+            sum_active_dist_rate = info_df[info_df['facility_id'].isin(active_resvs)]['dist_rate'].sum()
+            actual_inflow_min = theoretical_inflow_min * sum_active_dist_rate
+            spill = theoretical_inflow_min - actual_inflow_min
+
+            # 4. Calculate Dynamic Priority for Inflow Distribution
+            fill_priority = {}
+            total_priority = 0
+            for _, res in info_df.iterrows():
+                f_id = res['facility_id']
+                gap = max(0.01, res['safety_max'] - current_levels[f_id])
+                priority = res['dist_rate'] * (gap ** 2)
+                fill_priority[f_id] = priority
+                if f_id in active_resvs:
+                    total_priority += priority
+
+            # 5. Update Levels for each facility
+            for _, res in info_df.iterrows():
+                f_id = res['facility_id']
+                
+                # Outflow (Demand)
+                q_out = curr_rows[curr_rows['facility_id'] == f_id]['flow_out'].values[0] / 60 if not curr_rows[curr_rows['facility_id'] == f_id].empty else 0
+                
+                # Inflow (Distributed)
+                if f_id in active_resvs and total_priority > 0:
+                    dynamic_rate = fill_priority[f_id] / total_priority
+                    q_in = actual_inflow_min * dynamic_rate
+                else:
+                    q_in = 0
+
+                # Physical Level Update
+                new_level = current_levels[f_id] + (q_in - q_out) / res['estimated_area']
+
+                # Clamp values to physical/safety constraints
+                current_levels[f_id] = max(0.1, min(new_level, res['safety_max']))
+
+            # 6. Record Results
+            results.append({
+                'timestamp': ts,
+                'active_pumps': active_pumps,
+                'sim_levels': current_levels.copy(),
+                'sim_cost': (active_pumps * self.PUMP_POWER_KW / 60) * price,
+                'spill_m3_per_min': max(0, spill)
+            })
+
+        return pd.DataFrame(results)
 
     def get_load_type(self, ts):
         #winder
